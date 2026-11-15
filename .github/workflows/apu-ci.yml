@@ -1,0 +1,21 @@
+name: APU RTL Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 make iverilog
+      - name: Run Python, RTL, overflow and cross-check tests
+        run: make all
