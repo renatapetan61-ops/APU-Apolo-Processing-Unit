@@ -12,8 +12,9 @@
 - Dados: INT8 assinado, acumuladores INT32
 
 ## Arquitetura v0.2
-- Array paralelo 4×4 com 16 elementos MAC independentes.
+- Grade 4×4 com 16 elementos MAC independentes e pipeline local por PE.
 - Cada PE registra o produto INT8×INT8 (estágio 1) e acumula o produto registrado em INT32 (estágio 2).
+- Nesta V0.2, os operandos são selecionados/broadcast pelo controlador a partir das matrizes registradas; o encaminhamento físico PE-a-PE de uma matriz sistólica clássica ainda não está implementado. Essa será uma evolução posterior.
 - Controlador GEMM 4×4 com fases IDLE, CLEAR_ACC, FEED, DRAIN e DONE.
 - Uma operação calcula C=A×B para matrizes 4×4.
 - Latência de projeto: 7 ciclos de clock da aceitação de START até DONE.
@@ -64,7 +65,7 @@ A meta de 10× só poderá ser avaliada contra uma TPU específica, com mesmo mo
 ## Roteiro
 1. v0.1 — MAC INT8/INT32.
 2. v0.2 — array 4×4, controlador GEMM e verificação Python/RTL.
-3. v0.3 — interface de memória, tiling e métricas de tráfego.
+3. v0.3 — encaminhamento PE-a-PE para fluxo sistólico clássico, interface de memória, tiling e métricas de tráfego.
 4. v0.4 — escalas de quantização e formatos numéricos para treinamento.
 5. v0.5 — gradientes, acumulação de gradientes e atualização de pesos.
 6. Futuro — síntese FPGA, relatórios de temporização, área e potência.
