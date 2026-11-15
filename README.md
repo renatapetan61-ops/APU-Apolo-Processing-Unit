@@ -1,21 +1,40 @@
 # APU — Unidade de Processamento Apolo
 
-**APU (Unidade de Processamento Apolo)** é um projeto experimental de acelerador digital especializado em operações matemáticas usadas por Transformers e LLMs.
+**APU (Unidade de Processamento Apolo)** é um projeto experimental de acelerador digital para operações matemáticas usadas por Transformers e LLMs.
 
-> Estado atual: protótipo RTL v0.1. Este repositório não contém um chip físico, não é ainda um treinador completo de LLMs e não reivindica desempenho 10× superior a uma TPU.
+> Estado atual: RTL experimental v0.2. O repositório não contém um chip físico nem um treinador completo de LLMs. Não há alegação comprovada de desempenho 10× superior a uma TPU.
 
 ## Plataforma de desenvolvimento
 - Host: Motorola Android
 - Ambiente: Ubuntu dentro do Termux
 - HDL: SystemVerilog
 - Verificação: Python 3 + Icarus Verilog
-- Primeira unidade: MAC INT8 com acumulador INT32
+- Dados: INT8 assinado, acumuladores INT32
 
-## Conteúdo
-- `rtl/apu_mac.sv`: multiplicador-acumulador assinado INT8 × INT8 → INT32.
-- `tb/tb_apu_mac.sv`: testbench SystemVerilog autochecking.
-- `tests/test_apu_mac_reference.py`: testes de referência aritmética em Python.
-- `Makefile`: comandos para executar os testes.
+## Arquitetura v0.2
+- Array paralelo 4×4 com 16 elementos MAC independentes.
+- Cada PE registra o produto INT8×INT8 (estágio 1) e acumula o produto registrado em INT32 (estágio 2).
+- Controlador GEMM 4×4 com fases IDLE, CLEAR_ACC, FEED, DRAIN e DONE.
+- Uma operação calcula C=A×B para matrizes 4×4.
+- Latência de projeto: 7 ciclos de clock da aceitação de START até DONE.
+- Intervalo mínimo de iniciação: 7 ciclos quando uma nova solicitação é apresentada no ciclo DONE.
+- Matrizes empacotadas em ordem row-major, elemento de índice zero nos bits menos significativos.
+
+### Mapeamento de portas
+- A[r,k] = `a_matrix[((r*4+k)*8) +: 8]`
+- B[k,c] = `b_matrix[((k*4+c)*8) +: 8]`
+- C[r,c] = `c_matrix[((r*4+c)*32) +: 32]`
+
+## Arquivos principais
+- `rtl/apu_mac.sv`: MAC sequencial original v0.1.
+- `rtl/apu_systolic_array_4x4.sv`: 16 PEs com pipeline de produto e acumulação.
+- `rtl/apu_matrix_controller.sv`: controlador de matriz 4×4.
+- `tb/tb_apu_gemm4x4.sv`: teste de identidade, latência e solicitações consecutivas.
+- `tb/tb_apu_overflow.sv`: teste RTL de wraparound INT32.
+- `tests/test_apu_mac_reference.py`: referência aritmética v0.1.
+- `tests/test_apu_gemm_reference.py`: testes Python de GEMM, INT8 e overflow.
+- `tests/run_python_rtl_crosscheck.py`: gera 16 casos determinísticos e compara Python com simulação RTL.
+- `Makefile`: comandos de verificação.
 
 ## Instalação no Ubuntu/Termux
 ```bash
@@ -23,38 +42,32 @@ apt update
 apt install -y python3 make iverilog
 ```
 
-## Testes
-Na raiz do repositório:
+## Executar verificação
 ```bash
-python3 -m unittest discover -s tests -v
+make test
 make rtl-test
+make overflow-test
+make crosscheck
 ```
-
-O teste RTL requer Icarus Verilog. Alternativamente:
+Ou executar tudo:
 ```bash
-iverilog -g2012 -o /tmp/apu_mac_tb rtl/apu_mac.sv tb/tb_apu_mac.sv
-vvp /tmp/apu_mac_tb
+make all
 ```
 
-## Comportamento do MAC
-Em cada borda de subida do clock:
-- `rst=1`: limpa o acumulador (reset síncrono ativo em nível alto).
-- `valid=0`: mantém o acumulador.
-- `valid=1, clear=1`: substitui o acumulador pelo produto com extensão de sinal.
-- `valid=1, clear=0`: soma o produto ao acumulador.
+O teste cruzado compila o RTL com Icarus Verilog, gera matrizes pseudoaleatórias em Python com semente fixa, calcula C=A×B em Python e compara os 16 resultados completos com a simulação SystemVerilog.
 
-O acumulador opera em complemento de dois de 32 bits; overflow é wraparound módulo 2³².
+## Limites técnicos
+Este RTL é um protótipo funcional de arquitetura digital, não um chip físico. O Motorola é o host de desenvolvimento e simulação; não executa este RTL como circuito acelerador. Para obter hardware reconfigurável será necessário FPGA ou plataforma equivalente. Fabricação de silício exige um processo industrial ou serviço de fabricação.
 
-## Arquitetura e roteiro
-1. **v0.1 — MAC INT8:** datapath, testbench e referência Python.
-2. **v0.2 — PE + array sistólico 4×4:** 16 elementos de processamento e verificação ciclo a ciclo.
-3. **v0.3 — GEMM tiled:** interface de matrizes, controle de fluxo e contabilização de tráfego de memória.
-4. **v0.4 — treinamento experimental:** escalas de quantização e experimentos numéricos.
-5. **v0.5 — primitivas de treinamento:** gradientes e atualização de pesos, comparados a uma referência Python.
-6. **Futuro — FPGA:** síntese, temporização, área e potência.
+A meta de 10× só poderá ser avaliada contra uma TPU específica, com mesmo modelo, precisão, batch, sequência, qualidade numérica e medição de latência/energia. A matriz 4×4 atual é uma etapa de pesquisa, não uma demonstração de superioridade sobre TPU.
 
-## Limites e critérios de desempenho
-O Motorola é o host de desenvolvimento, não o acelerador físico. Para executar o RTL como hardware será necessário sintetizá-lo para FPGA ou um processo de fabricação apropriado. Uma meta de 10× só poderá ser avaliada contra uma TPU específica, com mesmo modelo, precisão, batch, sequência, qualidade numérica e medição de energia/latência.
+## Roteiro
+1. v0.1 — MAC INT8/INT32.
+2. v0.2 — array 4×4, controlador GEMM e verificação Python/RTL.
+3. v0.3 — interface de memória, tiling e métricas de tráfego.
+4. v0.4 — escalas de quantização e formatos numéricos para treinamento.
+5. v0.5 — gradientes, acumulação de gradientes e atualização de pesos.
+6. Futuro — síntese FPGA, relatórios de temporização, área e potência.
 
-## Verificação
-Os testes Python verificam o modelo aritmético de referência. O testbench SystemVerilog precisa ser executado com Icarus Verilog. Testes aprovados não demonstram, por si só, síntese, frequência física, potência ou desempenho de TPU.
+## Status de verificação
+Os arquivos de teste foram adicionados ao repositório. A aprovação efetiva da simulação Icarus deve ser confirmada executando `make all` no ambiente Ubuntu/Termux ou por CI. A aprovação de testes não comprova desempenho físico, frequência, consumo ou desempenho de TPU.
